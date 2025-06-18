@@ -115,7 +115,7 @@ const Home = () => {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const res = await axios.get(`${import.meta.env.VITE_API_URL}/main/get-user`, {
+                const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/main/get-user`, {
                     withCredentials: true
                 });
                 setUsers(res.data);
@@ -135,7 +135,7 @@ const Home = () => {
         
         try {
             // Fix: current state won't be updated immediately, use username directly
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/messages/${user}/${username}`);
+            const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/messages/${user}/${username}`);
             console.log('Fetched messages:', res.data);
             setMessages(res.data); // Use res.data instead of res
         } catch (err) {
