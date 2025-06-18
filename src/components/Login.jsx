@@ -12,7 +12,7 @@ const Login = () => {
         e.preventDefault();
         try {
             const response = await axios.post(
-                `${import.meta.env.VITE_API_URL}/main/login`,
+                `${import.meta.env.VITE_SOCKET_URL}/main/login`,
                 {
                     username,
                     password,
