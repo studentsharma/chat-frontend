@@ -2,16 +2,29 @@ import React, { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
 import { useUser } from './UserContext.jsx';
 import io from "socket.io-client";
+import { CircleUserRound, Phone, EllipsisVertical, Video, Send, X, Menu, User, Search } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import toast from 'react-hot-toast';
 
 const Home = () => {
-    const { user } = useUser();
+    const navigate = useNavigate()
+    const { user, setUser } = useUser();
     const [users, setUsers] = useState([])
     const [current, setCurrent] = useState("")
     const [messages, setMessages] = useState([]);
     const [msg, setMsg] = useState("");
     const [msgs, setMsgs] = useState([]);
-    
-    // Use useRef to persist socket connection
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+    useEffect(() => {
+        async function fetchData() {
+            // console.log("working")
+            const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/main/me`, { withCredentials: true })
+            setUser(res.data.username)
+        }
+        fetchData()
+    }, [])
+
     const socketRef = useRef(null);
     // Ref for auto-scrolling
     const messagesEndRef = useRef(null);
@@ -27,52 +40,31 @@ const Home = () => {
     }, [messages, msgs]);
 
     useEffect(() => {
-        if (!user) return; // Don't connect if no user
-        
-        // Initialize socket connection with explicit configuration
+        if (!user) return;
+        // console.log(user)
+
         const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
-        console.log('Connecting to socket server:', socketUrl);
-        
+        // console.log('Connecting to socket server:', socketUrl);
+
         socketRef.current = io(socketUrl, {
             transports: ['websocket', 'polling'], // Specify transport methods
             timeout: 20000,
             forceNew: true
         });
-        
+
         // Register user when socket connects
         socketRef.current.on('connect', () => {
-            console.log('Socket connected successfully to localhost:3000');
-            console.log('Socket ID:', socketRef.current.id);
-            console.log('Registering user:', user);
+
             socketRef.current.emit('register-user', user);
-            
-            // Test database connection
-            socketRef.current.emit('test-db');
+
         });
-        
-        // Handle test results
-        socketRef.current.on('db-test-result', (data) => {
-            console.log('Database test result:', data);
-        });
-        
-        // Confirm registration
-        socketRef.current.on('user-registered', (data) => {
-            console.log('User registration result:', data);
-        });
-        
+
+
         socketRef.current.on("receive-message", (data) => {
-            console.log('Received message:', data);
-            console.log('Current conversation:', { current, user });
-            console.log('Message from:', data.by || data.from, 'to:', data.to);
-            
-            // Add all received messages for now (we'll filter later)
+
             setMsgs((prev) => [...prev, data]);
         });
 
-        // Handle connection errors
-        socketRef.current.on('connect_error', (error) => {
-            console.error('Socket connection error:', error);
-        });
 
         socketRef.current.on('disconnect', (reason) => {
             console.log('Socket disconnected:', reason);
@@ -81,17 +73,13 @@ const Home = () => {
         // Cleanup on unmount
         return () => {
             if (socketRef.current) {
-                console.log('Cleaning up socket connection');
                 socketRef.current.off("receive-message");
                 socketRef.current.off("connect");
-                socketRef.current.off("user-registered");
-                socketRef.current.off("connect_error");
                 socketRef.current.off("disconnect");
-                socketRef.current.off("db-test-result");
                 socketRef.current.disconnect();
             }
         };
-    }, [user]); // Only depend on user, not current
+    }, [user]);
 
     const sendMessage = () => {
         if (socketRef.current && msg.trim() && current) {
@@ -100,14 +88,13 @@ const Home = () => {
                 by: user,
                 to: current
             });
-            
-            // Add message to local state immediately for better UX
+
             setMsgs(prev => [...prev, {
                 content: msg,
                 by: user,
                 to: current
             }]);
-            
+
             setMsg("");
         }
     };
@@ -115,13 +102,14 @@ const Home = () => {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const res = await axios.get(`${import.meta.env.VITE_API_URL}/main/get-user`, {
+                const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/main/get-user`, {
                     withCredentials: true
                 });
                 setUsers(res.data);
-                console.log(res.data);
+                // console.log(res.data);
             } catch (err) {
-                console.log("Error in getting users", err);
+                // console.log("Error in getting users", err);
+                navigate("/")
             }
         };
 
@@ -129,122 +117,270 @@ const Home = () => {
     }, []);
 
     const handleCurrent = async (username) => {
-        console.log('Switching to conversation with:', username);
+        // console.log('Switching to conversation with:', username);
         setCurrent(username);
-        // Don't clear real-time messages immediately, let filtering handle it
-        
+
         try {
-            // Fix: current state won't be updated immediately, use username directly
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/messages/${user}/${username}`);
-            console.log('Fetched messages:', res.data);
+            const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/messages/${user}/${username}`);
+            // console.log('Fetched messages:', res.data);
             setMessages(res.data); // Use res.data instead of res
         } catch (err) {
-            console.log("Error fetching messages", err);
+            // console.log("Error fetching messages", err);
         }
     }
 
-    // Handle Enter key press for sending messages
     const handleKeyPress = (e) => {
         if (e.key === 'Enter') {
             sendMessage();
         }
     };
 
+    const handleLogout = async () => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_SOCKET_URL}/main/logout`, { withCredentials: true });
+            toast.success("Logout Successfully")
+            navigate("/")
+        }
+        catch (err) {
+            // console.log(err);
+        }
+
+    }
+
     return (
-        <div className='flex'>
-            <div className='bg-red-500 h-screen w-96 overflow-y-auto p-4'>
-                <h3 className="text-white font-bold mb-4">Users</h3>
-                {users.map((item, index) => (
-                    <div key={index} className="mb-2">
-                        <button 
-                            onClick={() => handleCurrent(item.username)}
-                            className={`w-full text-left p-2 rounded ${
-                                current === item.username 
-                                    ? 'bg-red-700 text-white' 
-                                    : 'bg-white text-black hover:bg-gray-200'
-                            }`}
-                        >
-                            {item.username}
-                        </button>
+
+        <div className="flex bg-gradient-to-br from-slate-50 to-blue-50 text-slate-800 h-screen overflow-hidden">
+            {/* Mobile Sidebar Overlay */}
+            {isSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            {/* Sidebar - Users List */}
+            <div className={`
+        fixed lg:relative
+        h-full w-80 sm:w-96 lg:w-auto
+        transform transition-all duration-300 ease-in-out
+        z-50 lg:z-auto
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+                <div className="flex justify-center items-center h-full lg:h-auto lg:p-4">
+                    <div className="bg-white/80 backdrop-blur-lg h-full lg:h-[calc(100vh-2rem)] w-full lg:w-96 shadow-2xl lg:rounded-2xl border border-white/20 flex flex-col">
+
+                        {/* Sidebar Header */}
+                        <div className="flex-shrink-0 p-4 lg:p-6 border-b border-white/20">
+                            {/* Mobile close button */}
+                            <div className="flex justify-between items-center mb-4 lg:mb-6">
+                                <div className="flex items-center gap-3">
+                                    <CircleUserRound className="w-8 h-8 text-slate-600" />
+                                    <h1 className="text-lg font-semibold text-slate-800">
+                                        {user}
+                                    </h1>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleLogout}
+                                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+                                    >
+                                        Logout
+                                    </button>
+                                    <button
+                                        onClick={() => setIsSidebarOpen(false)}
+                                        className="lg:hidden p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Search */}
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Search friends..."
+                                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                />
+                                <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                                    <Search className="w-5 h-5 text-slate-600" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Users List - Scrollable */}
+                        <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+                            {users.map((item, index) => (
+                                <div key={index}>
+                                    <button
+                                        onClick={() => handleCurrent(item.username)}
+                                        className={`w-full text-left p-4 rounded-xl transition-all duration-200 hover:scale-[1.02] ${current === item.username
+                                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25'
+                                            : 'bg-white/60 text-slate-800 hover:bg-white/80 hover:shadow-lg'
+                                            }`}
+                                    >
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <span className="text-white font-semibold text-sm">
+                                                    {item.username.split(' ').map(n => n[0]).join('')}
+                                                </span>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="font-medium truncate">
+                                                    {item.username === user ? "(YOU)" : item.username}
+                                                </div>
+                                                <div className="text-xs text-slate-500">Online</div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ))}
+                </div>
             </div>
 
-            <div className="bg-blue-800 h-screen w-full flex flex-col">
-                {/* Chat header */}
-                {current && (
-                    <div className="bg-blue-900 p-4 text-white font-bold">
-                        Chat with {current}
-                    </div>
-                )}
+            {/* Main Chat Area */}
+            <div className="flex-1 flex flex-col h-full lg:p-4">
+                <div className="bg-white/80 backdrop-blur-lg h-full lg:rounded-2xl shadow-2xl border border-white/20 flex flex-col overflow-hidden">
 
-                {/* Messages area */}
-                <div className="flex-1 overflow-y-auto p-4">
-                    {/* Database messages */}
-                    {messages.map((item, key) => (
-                        <div 
-                            key={`db-${key}`} 
-                            className={`mb-2 p-2 rounded max-w-xs ${
-                                item.by === user 
-                                    ? 'bg-blue-600 text-white ml-auto text-right' 
-                                    : 'bg-gray-300 text-black mr-auto text-left'
-                            }`}
-                        >
-                            <div>{item.content}</div>
-                            <div className="text-xs opacity-70">DB</div>
-                        </div>
-                    ))}
-
-                    {/* Real-time messages */}
-                    {msgs
-                        .filter(message => {
-                            // Show messages for current conversation
-                            const isForCurrentConversation = 
-                                (message.by === current && message.to === user) || 
-                                (message.by === user && message.to === current) ||
-                                (message.from === current && message.to === user) || 
-                                (message.from === user && message.to === current);
-                            
-                            console.log('Filtering message:', message, 'Show:', isForCurrentConversation);
-                            return isForCurrentConversation;
-                        })
-                        .map((message, idx) => (
-                            <div 
-                                key={`rt-${idx}`}
-                                className={`mb-2 p-2 rounded max-w-xs ${
-                                    (message.by === user || message.from === user)
-                                        ? 'bg-green-600 text-white ml-auto text-right' 
-                                        : 'bg-yellow-300 text-black mr-auto text-left'
-                                }`}
-                            >
-                                <div>{message.content || message.data}</div>
-                                <div className="text-xs opacity-70">RT</div>
+                    {/* Chat Header */}
+                    {current ? (
+                        <div className="flex-shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 h-16 lg:h-20 flex justify-between px-4 lg:px-6 items-center lg:rounded-t-2xl">
+                            <div className="flex items-center space-x-4">
+                                <button
+                                    onClick={() => setIsSidebarOpen(true)}
+                                    className="lg:hidden text-white hover:bg-white/10 p-2 rounded-lg transition-colors"
+                                >
+                                    <Menu className="w-5 h-5" />
+                                </button>
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <span className="text-white font-semibold text-sm">
+                                            {current.split(' ').map(n => n[0]).join('')}
+                                        </span>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="text-white font-medium truncate">{current}</div>
+                                        <div className="text-green-400 text-xs">Active now</div>
+                                    </div>
+                                </div>
                             </div>
-                                                    ))
-                    }
-                    {/* Invisible element to scroll to */}
-                    <div ref={messagesEndRef} />
-                </div>
 
-                {/* Message input area */}
-                {current && (
-                    <div className="p-4 bg-blue-900 flex gap-2">
-                        <input
-                            value={msg}
-                            onChange={(e) => setMsg(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            type="text"
-                            placeholder="Type message"
-                            className="flex-1 p-2 rounded"
-                        />
-                        <button 
-                            onClick={sendMessage}
-                            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                        >
-                            Send
-                        </button>
+                            <div className="flex items-center space-x-2 lg:space-x-4">
+                                <button className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors">
+                                    <Phone className="w-5 h-5" />
+                                </button>
+                                <button className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors">
+                                    <Video className="w-5 h-5" />
+                                </button>
+                                <button className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors">
+                                    <EllipsisVertical className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex-shrink-0 flex items-center justify-center h-16 lg:h-20 relative bg-gradient-to-r from-slate-900 to-slate-800 lg:rounded-t-2xl">
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="lg:hidden absolute left-4 p-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition-colors"
+                            >
+                                <Menu className="w-5 h-5" />
+                            </button>
+                            <div className="text-center text-white text-lg lg:text-xl font-medium">
+                                Select a friend to start chatting 👋
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Messages Area - Scrollable */}
+                    <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 bg-gradient-to-b from-slate-50/50 to-white/30 overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+                        {current && (
+                            <>
+                                {/* Database messages */}
+                                {messages
+                                    .filter(item => item.by === current || item.by === user)
+                                    .map((item, key) => (
+                                        <div
+                                            key={`db-${key}`}
+                                            className={`flex ${item.by === user ? 'justify-end' : 'justify-start'}`}
+                                        >
+                                            <div
+                                                className={`max-w-[80%] sm:max-w-sm md:max-w-md p-3 lg:p-4 rounded-2xl shadow-lg ${item.by === user
+                                                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-md'
+                                                    : 'bg-white text-slate-800 rounded-bl-md border border-slate-200'
+                                                    }`}
+                                            >
+                                                <div className="text-sm font-medium break-words">{item.content}</div>
+                                                <div className="text-xs opacity-70 mt-1">{item.timestamp}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                {/* Real-time messages */}
+                                {msgs
+                                    .filter(message => {
+                                        const isForCurrentConversation =
+                                            (message.by === current && message.to === user) ||
+                                            (message.by === user && message.to === current) ||
+                                            (message.from === current && message.to === user) ||
+                                            (message.from === user && message.to === current);
+                                        return isForCurrentConversation;
+                                    })
+                                    .map((message, idx) => (
+                                        <div
+                                            key={`rt-${idx}`}
+                                            className={`flex ${(message.by === user || message.from === user) ? 'justify-end' : 'justify-start'
+                                                }`}
+                                        >
+                                            <div
+                                                className={`max-w-[80%] sm:max-w-sm md:max-w-md p-3 lg:p-4 rounded-2xl shadow-lg ${(message.by === user || message.from === user)
+                                                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-md'
+                                                    : 'bg-gradient-to-br from-yellow-300 to-yellow-400 text-slate-800 rounded-bl-md'
+                                                    }`}
+                                            >
+                                                <div className="text-sm font-medium break-words">{message.content || message.data}</div>
+                                                <div className="text-xs opacity-70 mt-1">{message.timestamp}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </>
+                        )}
+
+                        {!current && (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center text-slate-500">
+                                    <div className="text-4xl mb-4">💬</div>
+                                    <div className="text-lg font-medium">Welcome to Chat!</div>
+                                    <div className="text-sm">Select a friend from the sidebar to start messaging</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Auto-scroll anchor */}
+                        <div ref={messagesEndRef} />
                     </div>
-                )}
+
+                    {/* Message Input */}
+                    {current && (
+                        <div className="flex-shrink-0 p-4 lg:p-6 bg-white/60 backdrop-blur-sm flex gap-2 lg:gap-3 border-t border-white/20 lg:rounded-b-2xl">
+                            <input
+                                value={msg}
+                                onChange={(e) => setMsg(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                                type="text"
+                                placeholder="Type your message..."
+                                className="flex-1 p-3 lg:p-4 rounded-xl lg:rounded-2xl bg-white/80 backdrop-blur-sm border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder-slate-500 text-slate-800 text-sm lg:text-base"
+                            />
+                            <button
+                                onClick={sendMessage}
+                                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 px-4 lg:px-6 py-3 lg:py-4 rounded-xl lg:rounded-2xl transition-all duration-200 hover:scale-105 shadow-lg shadow-blue-500/25 flex-shrink-0"
+                            >
+                                <Send className="w-5 h-5 text-white" />
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )

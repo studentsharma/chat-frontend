@@ -5,7 +5,6 @@ function Home() {
     const [message, setMessage] = useState("");
     const [messages, setMessages] = useState([]);
     const [username, setUsername] = useState("Anil"); // dynamic later
-    const [friend, setFriend] = useState("Nikita"); // dynamic later
 
     useEffect(() => {
         socket.emit("register-user", username);
